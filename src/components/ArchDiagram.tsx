@@ -21,6 +21,28 @@ function arrowHead(tip: Point2D, dir: number, size: number): string {
 
 const toPts = (pts: Point2D[]) => pts.map((p) => `${p.x},${p.y}`).join(' ');
 
+/** Rough axis-aligned bounds for a dimension label (keeps viewBox from clipping text). */
+function labelBounds(
+  pos: Point2D,
+  text: string,
+  textSize: number,
+  anchor: 'start' | 'middle' | 'end',
+): { x0: number; x1: number; y0: number; y1: number } {
+  const w = text.length * textSize * 0.58;
+  const h = textSize * 1.25;
+  let x0 = pos.x;
+  let x1 = pos.x;
+  if (anchor === 'middle') {
+    x0 = pos.x - w / 2;
+    x1 = pos.x + w / 2;
+  } else if (anchor === 'start') {
+    x1 = pos.x + w;
+  } else {
+    x0 = pos.x - w;
+  }
+  return { x0, x1, y0: pos.y - h, y1: pos.y + textSize * 0.15 };
+}
+
 /** A dimensioned engineering drawing of the arch. All geometry scales to the viewBox. */
 export function ArchDiagram({ geometry, params, barSize, format }: Props) {
   const d = useMemo(() => {
@@ -59,13 +81,13 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
       angleLabelPos = { x: 0, y: C.y - (rA + textSize * 1.1) };
     }
 
-    // Radius callout along C→Rt when the centre is shown.
+    // Radius callout along C→Rt when the centre is shown — sit past mid-span, offset outward.
     const radiusDir = Math.atan2(Rt.y - C.y, Rt.x - C.x);
-    const radiusMid: Point2D = { x: (C.x + Rt.x) / 2, y: (C.y + Rt.y) / 2 };
-    const perp = radiusDir - Math.PI / 2;
+    const perpOut = radiusDir + Math.PI / 2; // exterior side of the right radial
+    const along = 0.68;
     const radiusLabelPos: Point2D = {
-      x: radiusMid.x + Math.cos(perp) * gap * 0.6,
-      y: radiusMid.y + Math.sin(perp) * gap * 0.6,
+      x: C.x + along * (Rt.x - C.x) + Math.cos(perpOut) * gap * 1.9,
+      y: C.y + along * (Rt.y - C.y) + Math.sin(perpOut) * gap * 1.9,
     };
 
     // Radius leader (centred above the crown) when the centre is off-figure.
@@ -74,15 +96,27 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
     const leaderLabelPos: Point2D = { x: crown.x, y: leaderKnee.y - textSize * 0.6 };
     const leaderHalfW = textSize * 4.2; // generous half-width so the "R …" label never clips
 
-    // Bounds.
+    // Bounds — include every label so nothing clips at any scale.
     const xs = [...geometry.polyline.map((p) => p.x), L.x, Rt.x];
     const ys = [...geometry.polyline.map((p) => p.y), 0, A.y, chordDimY];
+    const addLabel = (pos: Point2D, text: string, anchor: 'start' | 'middle' | 'end' = 'middle') => {
+      const b = labelBounds(pos, text, textSize, anchor);
+      xs.push(b.x0, b.x1);
+      ys.push(b.y0, b.y1);
+    };
     if (showCenter) {
       xs.push(C.x);
       ys.push(C.y + cm);
+      addLabel(radiusLabelPos, `R ${format(R)}`);
     } else {
       xs.push(leaderKnee.x - leaderHalfW, leaderKnee.x + leaderHalfW);
       ys.push(leaderLabelPos.y - textSize);
+      addLabel(leaderLabelPos, `R ${format(R)}`, 'middle');
+    }
+    addLabel({ x: 0, y: arcLabelY }, `Arc ${format(params.arcLength)}`);
+    addLabel({ x: 0, y: chordDimY - textSize * 0.5 }, format(c), 'middle');
+    if (showAngle && angleLabelPos) {
+      addLabel(angleLabelPos, `${((theta * 180) / Math.PI).toFixed(1)}°`);
     }
     const m = textSize * 1.6 + gap * 0.4;
     const minX = Math.min(...xs) - m;
@@ -96,7 +130,7 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
       cm, anglePts, angleLabelPos, radiusDir, radiusLabelPos, crown, leaderKnee, leaderLabelPos,
       viewBox, theta,
     };
-  }, [geometry, params]);
+  }, [geometry, params, format]);
 
   const label = (
     pos: Point2D,
@@ -166,38 +200,25 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
           </>
         )}
 
-        {/* QC station drop-lines + labels (the centre mark is covered by the rise dimension) */}
-        {geometry.stations.map((st, i) => {
-          const isCenter = Math.abs(st.foot.x) < 1;
-          return (
-            <g key={i} className="dl-drop">
-              {!isCenter && (
-                <>
-                  <line x1={st.foot.x} y1={0} x2={st.head.x} y2={st.head.y} strokeWidth={d.thinW} />
-                  <circle cx={st.head.x} cy={st.head.y} r={d.thinW * 2.4} />
-                </>
-              )}
-              <text
-                x={st.foot.x}
-                y={d.textSize * 1.05}
-                className="dim-text dl-letter"
-                textAnchor="middle"
-                style={{ fontSize: d.textSize * 0.8, strokeWidth: d.textSize * 0.16 }}
-              >
-                {st.label}
-              </text>
-            </g>
-          );
-        })}
+        {/* QC station drop-lines + labels */}
+        {geometry.stations.map((st, i) => (
+          <g key={i} className="dl-drop">
+            <line x1={st.foot.x} y1={0} x2={st.head.x} y2={st.head.y} strokeWidth={d.thinW} />
+            <circle cx={st.head.x} cy={st.head.y} r={d.thinW * 2.4} />
+            <text
+              x={st.foot.x}
+              y={d.textSize * 1.05}
+              className="dim-text dl-letter"
+              textAnchor="middle"
+              style={{ fontSize: d.textSize * 0.8, strokeWidth: d.textSize * 0.16 }}
+            >
+              {st.label}
+            </text>
+          </g>
+        ))}
 
         {/* the bar (object line) */}
         <polyline className="dl-object" points={toPts(geometry.polyline)} fill="none" strokeWidth={d.objW} />
-
-        {/* rise dimension on the centre line; label sits in the clear space between A and B */}
-        <line className="dl-dim" x1={0} y1={0} x2={0} y2={-params.rise} strokeWidth={d.thinW} />
-        <polygon className="dl-arrow" points={arrowHead(d.A, -Math.PI / 2, d.arrow)} />
-        <polygon className="dl-arrow" points={arrowHead({ x: 0, y: 0 }, Math.PI / 2, d.arrow)} />
-        {label({ x: -params.chord / 4, y: -params.rise * 0.4 }, format(params.rise), 'middle', 'middle')}
 
         {/* arc-length label */}
         {label({ x: 0, y: d.arcLabelY }, `Arc ${format(params.arcLength)}`, 'middle', 'middle')}
