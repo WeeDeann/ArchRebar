@@ -134,6 +134,11 @@ button {
   font-weight: 700;
 }
 
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ── Layout ──────────────────────────────────────────────────────────────── */
 .layout {
   flex: 1;
@@ -422,7 +427,7 @@ button {
 .radius-box__value {
   font-size: 1.05rem;
   font-weight: 800;
-  color: var(--primary);
+  color: #111;
   font-variant-numeric: tabular-nums;
 }
 
@@ -434,7 +439,7 @@ button {
 }
 
 .dl-object {
-  stroke: var(--primary);
+  stroke: #111;
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
@@ -465,7 +470,7 @@ button {
 }
 
 .dl-drop circle {
-  fill: var(--primary);
+  fill: #111;
 }
 
 .dl-drop--q line {
@@ -557,7 +562,9 @@ button {
 }
 
 .dl-letter {
-  fill: var(--muted);
+  fill: #333;
+  stroke: #fff;
+  paint-order: stroke;
 }
 
 .qc__table {

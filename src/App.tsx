@@ -1,12 +1,14 @@
 import { useEffect, useMemo } from 'react';
 import { qcMarks, segmentArcSolver } from './engine';
 import { formatLength } from './units/units';
+import { buildJobSheetViewModel } from './export/jobSheet';
 import { solveFromInputs, useCalcStore } from './state/useCalcStore';
 import { Toolbar } from './components/Toolbar';
 import { InputPanel } from './components/InputPanel';
 import { Keypad } from './components/Keypad';
 import { QcTable } from './components/QcTable';
 import { ArchDiagram } from './components/ArchDiagram';
+import { PrintSheet } from './components/PrintSheet';
 import { Warnings } from './components/Warnings';
 
 export default function App() {
@@ -34,31 +36,51 @@ export default function App() {
 
   const format = (mm: number) => formatLength(mm, unitSystem, { step: roundingStep });
 
+  const jobSheet = useMemo(() => {
+    if (!model.params || !model.layout || !model.geometry) return null;
+    return buildJobSheetViewModel(
+      {
+        params: model.params,
+        layout: model.layout,
+        geometry: model.geometry,
+        warnings: model.result.warnings,
+        barSize,
+        interval,
+        unitSystem,
+        format,
+      },
+      roundingStep,
+    );
+  }, [model, barSize, interval, unitSystem, roundingStep, format]);
+
   return (
-    <div className="app">
-      <Toolbar />
-      <main className="layout">
-        <section className="inputs-panel">
-          <InputPanel params={model.params} />
-          <Keypad />
-        </section>
-        <section className="output-panel">
-          <Warnings warnings={model.result.warnings} errors={model.result.errors} />
-          {model.geometry && model.params && (
-            <ArchDiagram
-              geometry={model.geometry}
-              params={model.params}
-              barSize={barSize}
-              format={format}
-            />
-          )}
-          <QcTable layout={model.layout} />
-        </section>
-      </main>
-      <footer className="footer">
-        Works offline · Standard-agnostic geometry — always verify against your project
-        specification and applicable code.
-      </footer>
-    </div>
+    <>
+      <div className="app">
+        <Toolbar jobSheetReady={jobSheet !== null} />
+        <main className="layout">
+          <section className="inputs-panel">
+            <InputPanel params={model.params} />
+            <Keypad />
+          </section>
+          <section className="output-panel">
+            <Warnings warnings={model.result.warnings} errors={model.result.errors} />
+            {model.geometry && model.params && (
+              <ArchDiagram
+                geometry={model.geometry}
+                params={model.params}
+                barSize={barSize}
+                format={format}
+              />
+            )}
+            <QcTable layout={model.layout} />
+          </section>
+        </main>
+        <footer className="footer">
+          Works offline · Standard-agnostic geometry — always verify against your project
+          specification and applicable code.
+        </footer>
+      </div>
+      {jobSheet && <PrintSheet sheet={jobSheet} />}
+    </>
   );
 }

@@ -67,13 +67,16 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
     const arcLabelY = -h - gap * 1.0;
     const cm = gap * 0.5; // centre-mark half size
 
+    const arcL = geometry.polyline[0];
+    const arcR = geometry.polyline[geometry.polyline.length - 1];
+
     // Angle arc (sampled to avoid SVG arc-flag ambiguity).
     let anglePts: Point2D[] = [];
     let angleLabelPos: Point2D | null = null;
     if (showAngle) {
       const rA = Math.min(S * 0.14, R * 0.5);
-      const phiL = Math.atan2(L.y - C.y, L.x - C.x);
-      const phiR = Math.atan2(Rt.y - C.y, Rt.x - C.x);
+      const phiL = Math.atan2(arcL.y - C.y, arcL.x - C.x);
+      const phiR = Math.atan2(arcR.y - C.y, arcR.x - C.x);
       anglePts = Array.from({ length: 25 }, (_, i) => {
         const s = phiL + (i / 24) * (phiR - phiL);
         return { x: C.x + rA * Math.cos(s), y: C.y + rA * Math.sin(s) };
@@ -81,8 +84,8 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
       angleLabelPos = { x: 0, y: C.y - (rA + textSize * 1.1) };
     }
 
-    // Radius callout along C→Rt when the centre is shown — sit past mid-span, offset outward.
-    const radiusDir = Math.atan2(Rt.y - C.y, Rt.x - C.x);
+    // Radius callout along C→arcR when the centre is shown — sit past mid-span, offset outward.
+    const radiusDir = Math.atan2(arcR.y - C.y, arcR.x - C.x);
     const perpOut = radiusDir + Math.PI / 2; // exterior side of the right radial
     const along = 0.68;
     const radiusLabelPos: Point2D = {
@@ -125,10 +128,14 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
     const maxY = Math.max(...ys) + m * 0.5;
     const viewBox = `${minX} ${minY} ${maxX - minX} ${maxY - minY}`;
 
+    const clipTop = -(Math.max(h, depth) + gap * 4);
+    const clipY = clipTop;
+    const clipH = -clipTop;
+
     return {
-      L, Rt, A, C, showCenter, showAngle, gap, textSize, arrow, objW, thinW, chordDimY, arcLabelY,
-      cm, anglePts, angleLabelPos, radiusDir, radiusLabelPos, crown, leaderKnee, leaderLabelPos,
-      viewBox, theta,
+      L, Rt, A, C, arcL, arcR, showCenter, showAngle, gap, textSize, arrow, objW, thinW, chordDimY,
+      arcLabelY, cm, anglePts, angleLabelPos, radiusDir, radiusLabelPos, crown, leaderKnee, leaderLabelPos,
+      viewBox, theta, clipY, clipH,
     };
   }, [geometry, params, format]);
 
@@ -159,33 +166,35 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
         aria-label="Dimensioned engineering drawing of the arch"
         preserveAspectRatio="xMidYMid meet"
       >
-        {/* chord centre line (construction) */}
-        <line
-          className="dl-center"
-          x1={d.L.x - d.gap}
-          y1={0}
-          x2={d.Rt.x + d.gap}
-          y2={0}
-          strokeWidth={d.thinW}
-          strokeDasharray={`${d.gap * 0.9} ${d.gap * 0.35} ${d.thinW * 2} ${d.gap * 0.35}`}
-        />
+        <defs>
+          {/* Construction geometry stays on/above the chord — never through A/G labels below. */}
+          <clipPath id="diagram-above-chord">
+            <rect x={d.L.x - d.gap} y={d.clipY} width={params.chord + d.gap * 2} height={d.clipH} />
+          </clipPath>
+        </defs>
 
-        {/* radius + angle construction */}
+        {/* chord centre line — solid span along the chord */}
+        <line className="dl-center" x1={d.L.x} y1={0} x2={d.Rt.x} y2={0} strokeWidth={d.thinW} />
+
+        {/* radius + angle construction (clipped above chord) */}
         {d.showCenter && (
-          <>
-            <line className="dl-thin" x1={d.C.x} y1={d.C.y} x2={d.L.x} y2={d.L.y} strokeWidth={d.thinW} />
-            <line className="dl-thin" x1={d.C.x} y1={d.C.y} x2={d.Rt.x} y2={d.Rt.y} strokeWidth={d.thinW} />
-            <polygon className="dl-arrow" points={arrowHead(d.Rt, d.radiusDir, d.arrow)} />
+          <g clipPath="url(#diagram-above-chord)">
+            <line className="dl-thin" x1={d.C.x} y1={d.C.y} x2={d.arcL.x} y2={d.arcL.y} strokeWidth={d.thinW} />
+            <line className="dl-thin" x1={d.C.x} y1={d.C.y} x2={d.arcR.x} y2={d.arcR.y} strokeWidth={d.thinW} />
+            <polygon className="dl-arrow" points={arrowHead(d.arcR, d.radiusDir, d.arrow)} />
             <line className="dl-thin" x1={d.C.x - d.cm} y1={d.C.y} x2={d.C.x + d.cm} y2={d.C.y} strokeWidth={d.thinW} />
             <line className="dl-thin" x1={d.C.x} y1={d.C.y - d.cm} x2={d.C.x} y2={d.C.y + d.cm} strokeWidth={d.thinW} />
-            {label(d.radiusLabelPos, `R ${format(params.radius)}`, 'middle', 'middle')}
-          </>
+          </g>
         )}
+        {d.showCenter && label(d.radiusLabelPos, `R ${format(params.radius)}`, 'middle', 'middle')}
         {d.showAngle && (
-          <>
+          <g clipPath="url(#diagram-above-chord)">
             <polyline className="dl-thin" points={toPts(d.anglePts)} fill="none" strokeWidth={d.thinW} />
-            {d.angleLabelPos && label(d.angleLabelPos, `${((d.theta * 180) / Math.PI).toFixed(1)}°`, 'middle', 'middle')}
-          </>
+          </g>
+        )}
+
+        {d.showAngle && d.angleLabelPos && (
+          label(d.angleLabelPos, `${((d.theta * 180) / Math.PI).toFixed(1)}°`, 'middle', 'middle')
         )}
 
         {/* radius leader when the centre is off-figure */}

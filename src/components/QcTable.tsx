@@ -1,6 +1,8 @@
 import type { QcLayout } from '../engine';
-import { formatLength, toDisplay, unitLabel } from '../units/units';
+import { buildSpacingPattern } from '../export/jobSheet';
+import { formatLength } from '../units/units';
 import { useCalcStore } from '../state/useCalcStore';
+import { QcSheet } from './QcSheet';
 
 const INTERVALS = {
   metric: [
@@ -20,12 +22,7 @@ export function QcTable({ layout }: { layout: QcLayout | null }) {
   if (!layout || layout.marks.length === 0) return null;
 
   const fmt = (mm: number) => formatLength(mm, unitSystem, { step: roundingStep });
-  const num = (mm: number) => {
-    const disp = toDisplay(mm, unitSystem);
-    const rounded = roundingStep > 0 ? Math.round(disp / roundingStep) * roundingStep : disp;
-    return rounded.toFixed(unitSystem === 'metric' ? 0 : 2);
-  };
-  const pattern = `${layout.gaps.map(num).join('  +  ')}  ${unitLabel(unitSystem)}`;
+  const pattern = buildSpacingPattern(layout, unitSystem, roundingStep);
 
   return (
     <div className="qc card">
@@ -46,27 +43,7 @@ export function QcTable({ layout }: { layout: QcLayout | null }) {
         Lay a straightedge along the chord. Mark from one end using the spacing below, then measure
         each height above the straightedge.
       </p>
-      <p className="qc__pattern">{pattern}</p>
-      <table className="qc__table">
-        <thead>
-          <tr>
-            <th>Point</th>
-            <th>From end</th>
-            <th>Height</th>
-          </tr>
-        </thead>
-        <tbody>
-          {layout.marks.map((m) => (
-            <tr key={m.label}>
-              <td>
-                <span className="qc__pt">{m.label}</span>
-              </td>
-              <td>{fmt(m.fromEnd)}</td>
-              <td className="qc__offset">{fmt(m.offset)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <QcSheet layout={layout} spacingPattern={pattern} format={fmt} />
     </div>
   );
 }

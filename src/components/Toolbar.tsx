@@ -1,41 +1,15 @@
-import { useState } from 'react';
-import { qcMarks } from '../engine';
-import { formatLength } from '../units/units';
-import { solveFromInputs, useCalcStore } from '../state/useCalcStore';
+import { useCalcStore } from '../state/useCalcStore';
 
-export function Toolbar() {
-  const { inputs, drivers, unitSystem, setUnitSystem, theme, toggleTheme, roundingStep, interval, barSize } =
-    useCalcStore();
-  const [copied, setCopied] = useState(false);
+interface Props {
+  jobSheetReady: boolean;
+}
 
-  const copy = async () => {
-    const res = solveFromInputs(inputs, drivers, unitSystem);
-    if (!res.ok || !res.params) return;
-    const p = res.params;
-    const fmt = (mm: number) => formatLength(mm, unitSystem, { step: roundingStep });
-    const stations = qcMarks(p, interval).marks.map(
-      (m) => `  (${m.label}) ${fmt(m.fromEnd)} from end -> ${fmt(m.offset)}`,
-    );
-    const lines = [
-      'ArchRebar — circular arch',
-      `Bar: ⌀ ${barSize} mm`,
-      `Chord: ${fmt(p.chord)}`,
-      `Rise: ${fmt(p.rise)}`,
-      `Radius (centre-line): ${fmt(p.radius)}`,
-      `Radius (inside / outside): ${fmt(p.radius - barSize / 2)} / ${fmt(p.radius + barSize / 2)}`,
-      `Cutting length: ${fmt(p.arcLength)}`,
-      `Included angle: ${((p.centralAngle * 180) / Math.PI).toFixed(1)}°`,
-      '',
-      'Shop-floor checks (height above chord):',
-      ...stations,
-    ];
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard unavailable */
-    }
+export function Toolbar({ jobSheetReady }: Props) {
+  const { unitSystem, setUnitSystem, theme, toggleTheme } = useCalcStore();
+
+  const print = () => {
+    if (!jobSheetReady) return;
+    window.print();
   };
 
   return (
@@ -65,8 +39,8 @@ export function Toolbar() {
             in
           </button>
         </div>
-        <button type="button" className="icon-btn" onClick={copy}>
-          {copied ? 'Copied' : 'Copy'}
+        <button type="button" className="icon-btn" onClick={print} disabled={!jobSheetReady}>
+          Print
         </button>
         <button
           type="button"
