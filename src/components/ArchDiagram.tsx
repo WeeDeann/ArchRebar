@@ -6,6 +6,7 @@ interface Props {
   params: SegmentParams;
   barSize: number;
   format: (mm: number) => string;
+  variant?: 'screen' | 'print';
 }
 
 /** Triangle points for a filled arrowhead whose tip is at `tip`, pointing in `dir` (radians). */
@@ -44,7 +45,8 @@ function labelBounds(
 }
 
 /** A dimensioned engineering drawing of the arch. All geometry scales to the viewBox. */
-export function ArchDiagram({ geometry, params, barSize, format }: Props) {
+export function ArchDiagram({ geometry, params, barSize, format, variant = 'screen' }: Props) {
+  const isPrint = variant === 'print';
   const d = useMemo(() => {
     const { chord: c, rise: h, radius: R, centralAngle: theta, centerOffset: depth } = params;
     const L: Point2D = { x: -c / 2, y: 0 };
@@ -70,6 +72,9 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
     const arcL = geometry.polyline[0];
     const arcR = geometry.polyline[geometry.polyline.length - 1];
 
+    const angleDeg = `${((theta * 180) / Math.PI).toFixed(1)}°`;
+    const radiusLabel = `R ${format(R)}`;
+
     // Angle arc (sampled to avoid SVG arc-flag ambiguity).
     let anglePts: Point2D[] = [];
     let angleLabelPos: Point2D | null = null;
@@ -84,9 +89,19 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
       angleLabelPos = { x: 0, y: C.y - (rA + textSize * 1.1) };
     }
 
-    // Radius callout along C→arcR when the centre is shown — sit past mid-span, offset outward.
+    // R + angle labels — side by side on screen only.
+    let radiusSpecPos: Point2D | null = null;
+    let angleSpecPos: Point2D | null = null;
+    if (!isPrint && showCenter && showAngle && angleLabelPos) {
+      const pairGap = gap * 0.4;
+      radiusSpecPos = { x: -pairGap, y: angleLabelPos.y };
+      angleSpecPos = { x: pairGap, y: angleLabelPos.y };
+    } else if (!isPrint && showCenter) {
+      radiusSpecPos = { x: 0, y: C.y - textSize * 1.5 };
+    }
+
     const radiusDir = Math.atan2(arcR.y - C.y, arcR.x - C.x);
-    const perpOut = radiusDir + Math.PI / 2; // exterior side of the right radial
+    const perpOut = radiusDir + Math.PI / 2;
     const along = 0.68;
     const radiusLabelPos: Point2D = {
       x: C.x + along * (Rt.x - C.x) + Math.cos(perpOut) * gap * 1.9,
@@ -110,7 +125,17 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
     if (showCenter) {
       xs.push(C.x);
       ys.push(C.y + cm);
-      addLabel(radiusLabelPos, `R ${format(R)}`);
+      if (isPrint) {
+        addLabel(radiusLabelPos, radiusLabel);
+        if (showAngle && angleLabelPos) {
+          addLabel(angleLabelPos, angleDeg);
+        }
+      } else if (radiusSpecPos && angleSpecPos) {
+        addLabel(radiusSpecPos, radiusLabel, 'end');
+        addLabel(angleSpecPos, angleDeg, 'start');
+      } else if (radiusSpecPos) {
+        addLabel(radiusSpecPos, radiusLabel, 'middle');
+      }
     } else {
       xs.push(leaderKnee.x - leaderHalfW, leaderKnee.x + leaderHalfW);
       ys.push(leaderLabelPos.y - textSize);
@@ -118,9 +143,6 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
     }
     addLabel({ x: 0, y: arcLabelY }, `Arc ${format(params.arcLength)}`);
     addLabel({ x: 0, y: chordDimY - textSize * 0.5 }, format(c), 'middle');
-    if (showAngle && angleLabelPos) {
-      addLabel(angleLabelPos, `${((theta * 180) / Math.PI).toFixed(1)}°`);
-    }
     const m = textSize * 1.6 + gap * 0.4;
     const minX = Math.min(...xs) - m;
     const maxX = Math.max(...xs) + m;
@@ -133,11 +155,12 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
     const clipH = -clipTop;
 
     return {
-      L, Rt, A, C, arcL, arcR, showCenter, showAngle, gap, textSize, arrow, objW, thinW, chordDimY,
-      arcLabelY, cm, anglePts, angleLabelPos, radiusDir, radiusLabelPos, crown, leaderKnee, leaderLabelPos,
+      L, Rt, A, C, arcL, arcR, showCenter, showAngle, isPrint, gap, textSize, arrow, objW, thinW, chordDimY,
+      arcLabelY, cm, anglePts, angleLabelPos, radiusSpecPos, angleSpecPos, angleDeg, radiusDir, radiusLabelPos,
+      crown, leaderKnee, leaderLabelPos,
       viewBox, theta, clipY, clipH,
     };
-  }, [geometry, params, format]);
+  }, [geometry, params, format, isPrint]);
 
   const label = (
     pos: Point2D,
@@ -186,15 +209,28 @@ export function ArchDiagram({ geometry, params, barSize, format }: Props) {
             <line className="dl-thin" x1={d.C.x} y1={d.C.y - d.cm} x2={d.C.x} y2={d.C.y + d.cm} strokeWidth={d.thinW} />
           </g>
         )}
-        {d.showCenter && label(d.radiusLabelPos, `R ${format(params.radius)}`, 'middle', 'middle')}
+        {d.isPrint ? (
+          <>
+            {d.showCenter && label(d.radiusLabelPos, `R ${format(params.radius)}`, 'middle', 'middle')}
+            {d.showAngle && d.angleLabelPos && label(d.angleLabelPos, d.angleDeg, 'middle', 'middle')}
+          </>
+        ) : (
+          <>
+            {d.showCenter && d.radiusSpecPos && d.angleSpecPos && (
+              <>
+                {label(d.radiusSpecPos, `R ${format(params.radius)}`, 'end', 'middle')}
+                {label(d.angleSpecPos, d.angleDeg, 'start', 'middle')}
+              </>
+            )}
+            {d.showCenter && d.radiusSpecPos && !d.angleSpecPos && (
+              label(d.radiusSpecPos, `R ${format(params.radius)}`, 'middle', 'middle')
+            )}
+          </>
+        )}
         {d.showAngle && (
           <g clipPath="url(#diagram-above-chord)">
             <polyline className="dl-thin" points={toPts(d.anglePts)} fill="none" strokeWidth={d.thinW} />
           </g>
-        )}
-
-        {d.showAngle && d.angleLabelPos && (
-          label(d.angleLabelPos, `${((d.theta * 180) / Math.PI).toFixed(1)}°`, 'middle', 'middle')
         )}
 
         {/* radius leader when the centre is off-figure */}

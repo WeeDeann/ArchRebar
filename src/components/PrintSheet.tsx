@@ -63,7 +63,7 @@ export function PrintSheet({ sheet }: Props) {
 
       <div className="print-main">
         <div className="print-main__diagram">
-          <ArchDiagram geometry={geometry} params={params} barSize={barSize} format={format} />
+          <ArchDiagram geometry={geometry} params={params} barSize={barSize} format={format} variant="print" />
         </div>
         <div className={`print-main__qc print-qc-panel${splitQc ? ' print-qc-panel--split' : ''}`}>
           <div className="print-qc-panel__head">
